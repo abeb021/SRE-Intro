@@ -157,6 +157,51 @@ Done. total=130 success=126 fail=4 error_rate=3.0%
 
 `docker compose stop payments` was run ~8s into the run (mid first window) and `docker compose start payments` ~30s in (near the end). Error rate jumped from **0% → 2.2%** as soon as payments went down, settling at **3.0%** overall by the end of the run. The failures are concentrated in the "full purchase flow" (10% of traffic) — `pay` calls return 502 while `payments` is down; `events` (70% reads) and `reserve` (20%) keep succeeding throughout, which matches the failure-table finding that listing/reserving are unaffected by a `payments` outage.
 
+## Task 2 — Graceful Degradation
+
+Added a dedicated `httpx.ConnectError` branch in `pay_reservation` so a down `payments` service returns a clear 503 instead of a generic 502, while `reserve` is unaffected (it never calls `payments`).
+
+### Diff (`app/gateway/main.py`)
+
+```diff
+diff --git a/app/gateway/main.py b/app/gateway/main.py
+index c86db33..8d898f9 100644
+--- a/app/gateway/main.py
++++ b/app/gateway/main.py
+@@ -332,6 +332,16 @@ async def pay_reservation(reservation_id: str):
+     except CircuitOpenError:
+         log.error("circuit open, skipping payments call")
+         raise HTTPException(503, "Payment service temporarily unavailable (circuit open)")
++    except httpx.ConnectError:
++        log.warning(f"payments unreachable, reservation {reservation_id} stays held")
++        return JSONResponse(
++            status_code=503,
++            content={
++                "error": "payments_unavailable",
++                "message": "Payment service is temporarily down. Your reservation is held — try again in a few minutes.",
++                "reservation_id": reservation_id,
++            },
++        )
+     except httpx.TimeoutException:
+         raise HTTPException(504, "Payment service timeout")
+     except httpx.HTTPStatusError as e:
+```
+
+### Verification
+
+```
+$ docker compose stop payments
+$ curl -s -X POST http://localhost:3080/events/1/reserve -H "Content-Type: application/json" -d '{"quantity": 1}'
+{"reservation_id":"cfc10020-3dcb-4f2a-8d57-c1e8e69ff599","event_id":1,"quantity":1,"total_cents":5000,"expires_in_seconds":300}
+
+$ curl -s -X POST http://localhost:3080/reserve/cfc10020-3dcb-4f2a-8d57-c1e8e69ff599/pay
+HTTP 503
+{"error":"payments_unavailable","message":"Payment service is temporarily down. Your reservation is held — try again in a few minutes.","reservation_id":"cfc10020-3dcb-4f2a-8d57-c1e8e69ff599"}
+$ docker compose start payments
+```
+
+Reserve still succeeds (200) while `payments` is down, and `pay` now returns a clear 503 with `payments_unavailable` + an actionable message instead of the generic `502 "Payment service unavailable"`.
+
 ## GitHub Community
 
 *(Task 3 — to be completed manually: star the course repo + `simple-container-com/api`, follow `@Cre-eD`, `@Naghme98`, `@pierrepicaud`, and 3+ classmates.)*
