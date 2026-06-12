@@ -202,6 +202,58 @@ $ docker compose start payments
 
 Reserve still succeeds (200) while `payments` is down, and `pay` now returns a clear 503 with `payments_unavailable` + an actionable message instead of the generic `502 "Payment service unavailable"`.
 
+## Bonus Task — Resource Usage Under Load
+
+### B.1 — Idle (all 5 services running, no traffic)
+
+```
+$ docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.PIDs}}"
+NAME             CPU %     MEM USAGE / LIMIT     NET I/O           PIDS
+app-gateway-1    0.29%     40.46MiB / 15.34GiB   4.18kB / 3.16kB   2
+app-events-1     0.27%     43.4MiB / 15.34GiB    189kB / 246kB     2
+app-payments-1   0.27%     33.06MiB / 15.34GiB   796B / 126B       1
+app-postgres-1   0.01%     27.37MiB / 15.34GiB   95kB / 113kB      8
+app-redis-1      1.36%     5.977MiB / 15.34GiB   25kB / 9.26kB     6
+```
+
+### B.2 — Under load (`./loadgen/run.sh 10 30`, normal payments)
+
+```
+$ docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.PIDs}}"
+NAME             CPU %     MEM USAGE / LIMIT     NET I/O           PIDS
+app-gateway-1    4.27%     41.55MiB / 15.34GiB   158kB / 153kB     2
+app-events-1     2.22%     44.5MiB / 15.34GiB    316kB / 417kB     2
+app-payments-1   0.29%     34.28MiB / 15.34GiB   5.23kB / 3.28kB   2
+app-postgres-1   0.62%     27.97MiB / 15.34GiB   164kB / 199kB     8
+app-redis-1      3.30%     6.289MiB / 15.34GiB   37kB / 14.7kB     6
+```
+
+```
+Done. total=230 success=230 fail=0 error_rate=0%
+```
+
+### B.3 — Chaos (`PAYMENT_FAILURE_RATE=0.3 PAYMENT_LATENCY_MS=500`, `./loadgen/run.sh 10 30`)
+
+```
+$ docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.PIDs}}"
+NAME             CPU %     MEM USAGE / LIMIT     NET I/O           PIDS
+app-payments-1   0.25%     35.18MiB / 15.34GiB   10.2kB / 7.84kB   2
+app-gateway-1    0.23%     40.98MiB / 15.34GiB   622kB / 610kB     2
+app-events-1     0.28%     43.55MiB / 15.34GiB   713kB / 950kB     2
+app-postgres-1   0.00%     27.86MiB / 15.34GiB   382kB / 455kB     8
+app-redis-1      0.76%     5.695MiB / 15.34GiB   92.2kB / 38.1kB   6
+```
+
+```
+Done. total=167 success=158 fail=9 error_rate=5.3%
+```
+
+### Analysis
+
+- **Memory:** `events` (~43-44 MiB) and `gateway` (~40-41 MiB) are the heaviest by RSS — both are FastAPI/uvicorn processes with httpx/psycopg2/redis clients loaded. `redis` is smallest (~6 MiB, in-memory but tiny dataset). Memory barely moves between idle/load/chaos (±1 MiB) — no memory pressure at these volumes.
+- **CPU under load:** `gateway` is highest (0.29% → 4.27%), then `events` (0.27% → 2.22%), then `redis` (1.36% → 3.30%). Makes sense — `gateway` does the most per-request work (routing, metrics middleware, JSON (de)serialization for every hop), `events` does DB+Redis I/O, `redis` handles the held-ticket counters on every reserve.
+- **Fault injection impact on gateway:** in the B.3 run, `gateway`/`events`/`payments` CPU all *dropped back toward idle* (gateway 4.27%→0.23%) despite the 1-second snapshot landing mid-run. This is the opposite of "gateway holds connections longer → higher CPU" — instead, `PAYMENT_LATENCY_MS=500` makes each `/pay` call block for 500ms+ inside `client.post()` (an I/O wait, not CPU work), so the *event loop is idle* during that time — CPU% drops while wall-clock latency rises. The real cost of the chaos run shows up in **throughput and error rate**: total requests dropped from 230 → 167 (-27%) for the same 30s/10rps target, and error_rate rose from 0% → 5.3% (the 30% injected charge failures). So fault injection in `payments` doesn't spike gateway *CPU* — it spikes gateway *latency* (slower event loop turnaround) and the visible error rate.
+
 ## GitHub Community
 
 *(Task 3 — to be completed manually: star the course repo + `simple-container-com/api`, follow `@Cre-eD`, `@Naghme98`, `@pierrepicaud`, and 3+ classmates.)*
