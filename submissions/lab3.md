@@ -209,6 +209,19 @@ During payments failure, the SLO gauge dropped from 100% to ~95-97%, and the bur
 | T+60s | Payments restarted |
 | T+70s | Recovery |
 
+**Log Excerpts During Failure:**
+
+Gateway logs showing errors:
+```
+(No ERROR or 500 logs captured - the gateway was returning errors but logs weren't captured in this run)
+```
+
+Payments logs during shutdown:
+```
+payments-1  | INFO:     Shutting down
+payments-1  | INFO:     Waiting for application shutdown.
+```
+
 **Root Cause:**
 The payments service became unavailable, causing the gateway to return 500 errors to all reservation requests. This directly impacted the error rate SLO and caused the error budget to burn faster than acceptable.
 
@@ -217,22 +230,3 @@ The payments service became unavailable, causing the gateway to return 500 error
 - Task 1: Complete — prometheus.yml created, dashboard panels added, failure observed
 - Task 2: Complete — SLOs defined, recording rules created
 - Bonus: Complete — failure correlation documented
-```
-
----
-
-Now save this file:
-
-```bash
-cat > /home/abeb-arch/Innopolis/SRE/SRE-Intro/submissions/lab3.md
-```
-
-Then paste the entire content above and press Ctrl+D to save.
-
-Then commit:
-
-```bash
-cd /home/abeb-arch/Innopolis/SRE/SRE-Intro
-git add submissions/lab3.md monitoring/prometheus/
-git commit -m "feat(lab3): complete lab3 with real data"
-git push
