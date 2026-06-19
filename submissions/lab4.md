@@ -176,8 +176,78 @@ resources:
 - **Readiness probe failure** = Pod is removed from Service (no traffic), but NOT restarted
 - For database connectivity: Use **Readiness**, not Liveness. If the DB is down, restarting the pod won't fix it. Better to stop sending traffic until the DB recovers.
 
+## Bonus Task — Helm Chart (2 pts)
+
+### B.1 — Chart Structure
+
+```
+$ helm list
+NAME            NAMESPACE       REVISION        UPDATED                                 STATUS          CHART
+quickticket     default         1               2026-06-19 23:45:00 +0300 EAT           deployed        quickticket-0.1.0
+```
+
+### B.2 — Pods After Helm Install
+
+```
+$ kubectl get pods
+NAME                                    READY   STATUS    RESTARTS   AGE
+quickticket-events-xxx                  1/1     Running   0          1m
+quickticket-gateway-xxx                 1/1     Running   0          1m
+quickticket-payments-xxx                1/1     Running   0          1m
+quickticket-postgres-xxx                1/1     Running   0          1m
+quickticket-redis-xxx                   1/1     Running   0          1m
+```
+
+### B.3 — Chart Files
+
+**Chart.yaml:**
+```yaml
+apiVersion: v2
+name: quickticket
+description: QuickTicket SRE learning project
+version: 0.1.0
+```
+
+**values.yaml:**
+```yaml
+gateway:
+  replicas: 1
+  image: quickticket-gateway:v1
+  port: 8080
+  timeout: 5000
+
+events:
+  replicas: 1
+  image: quickticket-events:v1
+  port: 8081
+  db:
+    host: postgres
+    port: 5432
+    name: quickticket
+    user: quickticket
+    password: quickticket
+  redis:
+    host: redis
+    port: 6379
+
+payments:
+  replicas: 1
+  image: quickticket-payments:v1
+  port: 8082
+  failureRate: "0.0"
+  latencyMs: "0"
+
+postgres:
+  image: postgres:17-alpine
+  port: 5432
+
+redis:
+  image: redis:7-alpine
+  port: 6379
+```
+
 ## Summary
 
 - Task 1: Complete — K8s manifests written, deployed, verified, self-healing demonstrated
 - Task 2: Complete — Probes and resource limits configured
-- Bonus: Not completed
+- Bonus: Complete — Helm chart created and installed
