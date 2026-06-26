@@ -18,8 +18,8 @@ spec:
     spec:
       containers:
         - name: gateway
-          image: ghcr.io/abeb021/quickticket-gateway:does-not-exist
-          imagePullPolicy: Always
+          image: quickticket-gateway:v1
+          imagePullPolicy: Never
           env:
             - name: EVENTS_URL
               value: "http://events:8081"
