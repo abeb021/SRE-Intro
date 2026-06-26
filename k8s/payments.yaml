@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: payments
-          image: quickticket-payments:v1
+          image: ghcr.io/abeb021/quickticket-payments:latest
           imagePullPolicy: Never
           env:
             - name: PAYMENT_FAILURE_RATE
