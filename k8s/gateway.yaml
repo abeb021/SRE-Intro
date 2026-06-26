@@ -3,7 +3,6 @@ kind: Deployment
 metadata:
   name: gateway
   labels:
-    app: gateway
     version: "v2"
 spec:
   replicas: 1
@@ -13,13 +12,13 @@ spec:
   template:
     metadata:
       labels:
+    version: "v2"
         app: gateway
-        version: "v2"
     spec:
       containers:
         - name: gateway
           image: ghcr.io/abeb021/quickticket-gateway:does-not-exist
-          imagePullPolicy: Always
+          imagePullPolicy: Never
           env:
             - name: EVENTS_URL
               value: "http://events:8081"
@@ -55,7 +54,6 @@ kind: Service
 metadata:
   name: gateway
   labels:
-    app: gateway
     version: "v2"
 spec:
   selector:
