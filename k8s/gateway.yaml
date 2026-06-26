@@ -10,6 +10,7 @@ spec:
   template:
     metadata:
       labels:
+    version: "v2"
         app: gateway
     spec:
       containers:
